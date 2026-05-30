@@ -3,42 +3,51 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
+import time
 
 
-def is_uptrend(ticker, period="6mo", short_ma=20, long_ma=50):
+def is_uptrend(ticker, period="6mo", short_ma=20, long_ma=50, max_retries=3):
     """
     判断ETF是否处于上升趋势
     使用移动平均线交叉策略：短期MA > 长期MA 且价格高于两条MA
     """
-    try:
-        etf = yf.Ticker(ticker)
-        hist = etf.history(period=period)
-        
-        if len(hist) < long_ma:
-            return False, None, None
-        
-        hist['Short_MA'] = hist['Close'].rolling(window=short_ma).mean()
-        hist['Long_MA'] = hist['Close'].rolling(window=long_ma).mean()
-        
-        last = hist.iloc[-1]
-        prev = hist.iloc[-2]
-        
-        current_price = last['Close']
-        short_ma_val = last['Short_MA']
-        long_ma_val = last['Long_MA']
-        
-        uptrend_condition = (
-            short_ma_val > long_ma_val and
-            current_price > short_ma_val and
-            current_price > long_ma_val and
-            last['Short_MA'] > prev['Short_MA']
-        )
-        
-        return uptrend_condition, current_price, hist
-        
-    except Exception as e:
-        print(f"Error processing {ticker}: {e}")
-        return False, None, None
+    retry_count = 0
+    while retry_count < max_retries:
+        try:
+            etf = yf.Ticker(ticker)
+            hist = etf.history(period=period)
+            
+            if len(hist) < long_ma:
+                return False, None, None
+            
+            hist['Short_MA'] = hist['Close'].rolling(window=short_ma).mean()
+            hist['Long_MA'] = hist['Close'].rolling(window=long_ma).mean()
+            
+            last = hist.iloc[-1]
+            prev = hist.iloc[-2]
+            
+            current_price = last['Close']
+            short_ma_val = last['Short_MA']
+            long_ma_val = last['Long_MA']
+            
+            uptrend_condition = (
+                short_ma_val > long_ma_val and
+                current_price > short_ma_val and
+                current_price > long_ma_val and
+                last['Short_MA'] > prev['Short_MA']
+            )
+            
+            return uptrend_condition, current_price, hist
+            
+        except Exception as e:
+            retry_count += 1
+            if retry_count < max_retries:
+                wait_time = 2 ** retry_count  # 指数退避
+                print(f"重试 {ticker} ({retry_count}/{max_retries})，等待 {wait_time} 秒...")
+                time.sleep(wait_time)
+            else:
+                print(f"Error processing {ticker}: {e}")
+                return False, None, None
 
 
 def main():
@@ -74,6 +83,8 @@ def main():
             })
         else:
             print("✗ 非上升趋势")
+        
+        time.sleep(1)
     
     print()
     print("="*60)
